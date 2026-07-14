@@ -19,3 +19,4 @@ def print_badge(console: Console) -> None:
             padding=(0, 1),
         )
     )
+    console.line()

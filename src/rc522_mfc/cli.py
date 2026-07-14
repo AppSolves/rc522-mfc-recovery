@@ -7,10 +7,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
+import click
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from typer.core import TyperGroup
 
 from . import __version__
 from .branding import print_badge
@@ -23,9 +25,21 @@ from .solver import HardnestedSolver
 from .state import StateStore
 from .workflow import RecoveryOptions, RecoveryWorkflow
 
+
+class RootGroup(TyperGroup):
+    def format_help(
+        self,
+        ctx: click.Context,
+        formatter: click.HelpFormatter,
+    ) -> None:
+        print_badge(console)
+        super().format_help(ctx, formatter)
+
+
 app = typer.Typer(
     name="rc522-mfc",
     help="MIFARE Classic key recovery with a Raspberry Pi and an MFRC522 reader.",
+    cls=RootGroup,
     no_args_is_help=True,
     rich_markup_mode="rich",
     pretty_exceptions_show_locals=False,
@@ -220,7 +234,6 @@ def setup(
 @app.command()
 def doctor() -> None:
     """Check the OS, SPI device, dependencies, and MFRC522 communication."""
-    print_badge(console)
     paths = ToolPaths.discover()
     table = Table(title="RC522 MFC doctor")
     table.add_column("Check")
@@ -274,7 +287,6 @@ def inspect_card(
     ] = 128,
 ) -> None:
     """Identify the card and classify its nonce generator."""
-    print_badge(console)
     paths = ensure_toolchain(require_pm3=False)
     with WorkflowProgressDisplay(console, overall_label="Inspect card", overall_total=2) as progress:
         workflow = RecoveryWorkflow(paths, line_sink=progress.handle_line)
@@ -371,7 +383,6 @@ def recover(
     ] = False,
 ) -> None:
     """Recover missing keys, verify them, and reuse them across selected sectors."""
-    print_badge(console)
     selected_sectors = parse_sector_expression(sectors)
     selected_types = [KeyType(value) for value in dict.fromkeys(key_types.upper())]
     if not selected_types:
