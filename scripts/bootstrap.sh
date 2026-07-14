@@ -294,7 +294,7 @@ fi
 printf '\nVerifying Python CLI dependencies...\n'
 
 "$ROOT/.venv/bin/python" \
-  -c 'import click; import rc522_mfc.cli'
+  -c 'import typer; import rc522_mfc.cli'
 
 printf '\n============================================================\n'
 printf 'Setup complete\n'

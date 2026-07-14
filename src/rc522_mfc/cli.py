@@ -5,14 +5,14 @@ import subprocess
 import sys
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
-import click
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from typer.core import TyperGroup
+from typing_extensions import override
 
 from . import __version__
 from .branding import print_badge
@@ -27,10 +27,11 @@ from .workflow import RecoveryOptions, RecoveryWorkflow
 
 
 class RootGroup(TyperGroup):
+    @override
     def format_help(
         self,
-        ctx: click.Context,
-        formatter: click.HelpFormatter,
+        ctx: Any,
+        formatter: Any,
     ) -> None:
         print_badge(console)
         super().format_help(ctx, formatter)
