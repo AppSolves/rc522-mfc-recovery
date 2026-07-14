@@ -7,7 +7,10 @@ CACHE="${RC522_MFC_CACHE:-$HOME/.cache/rc522-mfc}"
 PM3_COMMIT="d0e8cf18614286c8f6be0864ef77b7ce5cae693d"
 PM3_DIR="$CACHE/proxmark3-$PM3_COMMIT"
 PM3_CLIENT="$PM3_DIR/client/proxmark3"
+PM3_SOURCE="$PM3_DIR/client/src/cmdhfmf.c"
+PM3_PATCH="$ROOT/patches/proxmark3-offline-hardnested.patch"
 FORCE=0
+PATCH_APPLIED=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,19 +37,23 @@ if [[ "$(git -C "$PM3_DIR" rev-parse HEAD)" != "$PM3_COMMIT" ]]; then
   exit 1
 fi
 
-if grep -q 'nonce_file_read == false' "$PM3_DIR/client/src/cmdhfmf.c"; then
+if git -C "$PM3_DIR" apply --reverse --check "$PM3_PATCH" >/dev/null 2>&1; then
   printf 'Offline Hardnested patch already applied.\n'
 elif git -C "$PM3_DIR" diff --quiet -- client/src/cmdhfmf.c \
-  && git -C "$PM3_DIR" apply --check "$ROOT/patches/proxmark3-offline-hardnested.patch"; then
-  git -C "$PM3_DIR" apply "$ROOT/patches/proxmark3-offline-hardnested.patch"
+  && git -C "$PM3_DIR" apply --check "$PM3_PATCH"; then
+  git -C "$PM3_DIR" apply "$PM3_PATCH"
+  PATCH_APPLIED=1
 else
   printf 'The pinned Proxmark3 source is modified or the patch does not apply cleanly.\n' >&2
   exit 1
 fi
 
-if [[ $FORCE -eq 0 && -x "$PM3_CLIENT" ]]; then
+if [[ $FORCE -eq 0 && $PATCH_APPLIED -eq 0 && -x "$PM3_CLIENT" && "$PM3_CLIENT" -nt "$PM3_SOURCE" ]]; then
   printf 'Using existing patched Proxmark3 client at %s\n' "$PM3_CLIENT"
 else
+  if [[ $FORCE -eq 0 && $PATCH_APPLIED -eq 0 && -x "$PM3_CLIENT" ]]; then
+    printf 'Existing Proxmark3 client is older than patched Hardnested source; rebuilding.\n'
+  fi
   make -C "$PM3_DIR" client/clean
   make -C "$PM3_DIR" -j"$(nproc)" client \
     SKIPQT=1 \

@@ -79,7 +79,7 @@ It applies `patches/proxmark3-offline-hardnested.patch`, builds the client only,
 ~/.local/lib/rc522-mfc/proxmark3/
 ```
 
-The `pm3` file in that directory is a launcher. The actual compiled client is `client/proxmark3` inside the same checkout, and setup validates that executable before treating the solver as installed.
+The `pm3` file in that directory is a launcher. The actual compiled client is `client/proxmark3` inside the same checkout, and setup validates that executable before treating the solver as installed. If the offline Hardnested patch is newly applied, or the compiled client is older than the patched source, setup rebuilds the client.
 
 Override the cache path with:
 

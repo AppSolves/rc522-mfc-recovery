@@ -55,6 +55,16 @@ From a source checkout, this is equivalent to:
 
 `rc522-mfc recover` and `rc522-mfc doctor` validate the compiled client before recovery starts.
 
+## Offline Hardnested says `No device connected`
+
+When the command is `hf mf hardnested -r -f <file>` and the PM3 prompt is `[offline|script]`, `No device connected` means the compiled Proxmark3 client is missing this project's offline Hardnested patch or was compiled before the patch was applied. Rebuild with:
+
+```bash
+rc522-mfc setup --force
+```
+
+The setup script rebuilds the client whenever it applies `patches/proxmark3-offline-hardnested.patch`, and whenever the compiled client is older than the patched source.
+
 ## SSH disconnected
 
 Run long recovery jobs in `tmux` or `screen`. Verified state and complete datasets are reusable, but a partially written nonce file is recollected.
