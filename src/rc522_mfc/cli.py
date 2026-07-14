@@ -14,15 +14,10 @@ from rich.table import Table
 
 from . import __version__
 from .exporters import export_csv, export_json, export_mct_keys
-from .models import (
-    KeyType,
-    NonceType,
-    RecoveryState,
-    parse_known_key,
-    parse_sector_expression,
-)
+from .models import KeyType, NonceType, RecoveryState, parse_known_key, parse_sector_expression
 from .native import NativeTool
 from .paths import ToolPaths
+from .progress import ProgressUpdate, WorkflowProgressDisplay
 from .state import StateStore
 from .workflow import RecoveryOptions, RecoveryWorkflow
 
@@ -216,9 +211,27 @@ def inspect_card(
 ) -> None:
     """Identify the card and classify its nonce generator."""
     paths = ensure_toolchain(require_pm3=False)
-    workflow = RecoveryWorkflow(paths, line_sink=line_sink)
-    card = workflow.identify()
-    nonce_type = workflow.classify_nonce(samples=samples)
+    with WorkflowProgressDisplay(console, overall_label="Inspect card", overall_total=2) as progress:
+        workflow = RecoveryWorkflow(paths, line_sink=progress.handle_line)
+        progress.handle_update(ProgressUpdate("stage", "Identifying card", completed=0, total=1))
+        card = workflow.identify()
+        progress.handle_update(ProgressUpdate("overall", "Card identified", completed=1, total=2))
+        progress.handle_update(
+            ProgressUpdate("stage", "Sampling nonce generator", completed=0, total=samples)
+        )
+        nonce_type = workflow.classify_nonce(
+            samples=samples,
+            progress_callback=lambda current, total: progress.handle_update(
+                ProgressUpdate(
+                    "stage",
+                    "Sampling nonce generator",
+                    completed=current,
+                    total=total,
+                )
+            ),
+        )
+        progress.handle_update(ProgressUpdate("overall", "Nonce generator classified", completed=2, total=2))
+        progress.finish(detail=f"classified as {nonce_type.value}")
     card.nonce_type = nonce_type
     table = Table(title="Card inspection")
     table.add_column("Field")
@@ -273,6 +286,13 @@ def recover(
             help="Do not fall back to Hardnested if weak Nested fails.",
         ),
     ] = False,
+    skip_dictionary: Annotated[
+        bool,
+        typer.Option(
+            "--skip-dictionary",
+            help="Skip bundled and user-provided dictionary scanning entirely.",
+        ),
+    ] = False,
     delete_traces: Annotated[
         bool,
         typer.Option(
@@ -288,27 +308,40 @@ def recover(
         raise typer.BadParameter("key types must contain A, B, or AB")
     parsed_known = [parse_known_key(value) for value in (known or [])]
     paths = ensure_toolchain(require_pm3=True)
-    workflow = RecoveryWorkflow(paths, line_sink=line_sink)
+    target_total = len(selected_sectors) * len(selected_types)
     console.print(
         Panel.fit(
             f"Sectors: {selected_sectors}\n"
             f"Keys: {''.join(value.value for value in selected_types)}\n"
-            f"Hardnested samples: {samples:,}",
+            f"Hardnested samples: {samples:,}\n"
+            f"Dictionary scan: {'disabled' if skip_dictionary else 'enabled'}",
             title="Recovery plan",
         )
     )
-    state, store = workflow.recover(
-        RecoveryOptions(
-            sectors=selected_sectors,
-            key_types=selected_types,
-            known=parsed_known,
-            dictionaries=dictionary or [],
-            samples=samples if samples % 2 == 0 else samples + 1,
-            force_nonce_type=NonceType(nonce_type.value) if nonce_type else None,
-            fallback_hardnested=not no_fallback,
-            keep_traces=not delete_traces,
+    with WorkflowProgressDisplay(
+        console,
+        overall_label="Recover selected keys",
+        overall_total=target_total,
+    ) as progress:
+        workflow = RecoveryWorkflow(
+            paths,
+            line_sink=progress.handle_line,
+            progress_sink=progress.handle_update,
         )
-    )
+        state, store = workflow.recover(
+            RecoveryOptions(
+                sectors=selected_sectors,
+                key_types=selected_types,
+                known=parsed_known,
+                dictionaries=dictionary or [],
+                samples=samples if samples % 2 == 0 else samples + 1,
+                force_nonce_type=NonceType(nonce_type.value) if nonce_type else None,
+                fallback_hardnested=not no_fallback,
+                keep_traces=not delete_traces,
+                skip_dictionary=skip_dictionary,
+            )
+        )
+        progress.finish(detail=f"saved state under {store.path}")
     print_key_table(state)
     console.print(f"[green]State saved to {store.path}[/green]")
 

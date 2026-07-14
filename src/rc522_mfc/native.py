@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -11,6 +12,9 @@ from .process import run_streaming
 
 JSON_PREFIX = "RC522_JSON:"
 JsonObject = dict[str, Any]
+ProgressCallback = Callable[[int, int], None]
+NONCE_PROBE_PROGRESS = re.compile(r"^sampled (\d+)/(\d+) nonce-probe samples$")
+HARDNESTED_PROGRESS = re.compile(r"^collected (\d+)/(\d+) hardnested samples$")
 
 
 class NativeTool:
@@ -28,12 +32,13 @@ class NativeTool:
         *,
         log_path: Path | None = None,
         allow_failure: bool = False,
+        line_sink: Callable[[str], None] | None = None,
     ) -> JsonObject:
         if not self.executable.is_file():
             raise RuntimeError(f"native helper not found: {self.executable}")
         result = run_streaming(
             [str(self.executable), *args],
-            on_line=self.line_sink,
+            on_line=line_sink or self.line_sink,
             log_path=log_path,
         )
         payload: JsonObject | None = None
@@ -126,8 +131,17 @@ class NativeTool:
             )
         return records
 
-    def nonce_probe(self, block: int = 0, samples: int = 128) -> JsonObject:
-        return self._run(["nonce-probe", "--block", str(block), "--samples", str(samples)])
+    def nonce_probe(
+        self,
+        block: int = 0,
+        samples: int = 128,
+        *,
+        progress_callback: ProgressCallback | None = None,
+    ) -> JsonObject:
+        return self._run(
+            ["nonce-probe", "--block", str(block), "--samples", str(samples)],
+            line_sink=self._with_progress(NONCE_PROBE_PROGRESS, progress_callback),
+        )
 
     def weak_nested(
         self,
@@ -170,6 +184,7 @@ class NativeTool:
         output: Path,
         meta: Path,
         log_path: Path,
+        progress_callback: ProgressCallback | None = None,
     ) -> JsonObject:
         output.parent.mkdir(parents=True, exist_ok=True)
         return self._run(
@@ -193,7 +208,26 @@ class NativeTool:
                 str(meta),
             ],
             log_path=log_path,
+            line_sink=self._with_progress(HARDNESTED_PROGRESS, progress_callback),
         )
+
+    def _with_progress(
+        self,
+        pattern: re.Pattern[str],
+        progress_callback: ProgressCallback | None,
+    ) -> Callable[[str], None] | None:
+        if self.line_sink is None and progress_callback is None:
+            return None
+
+        def sink(line: str) -> None:
+            if progress_callback:
+                match = pattern.match(line.strip())
+                if match:
+                    progress_callback(int(match.group(1)), int(match.group(2)))
+            if self.line_sink:
+                self.line_sink(line)
+
+        return sink
 
     def dump(
         self,

@@ -59,6 +59,7 @@ Important options:
 | `--sectors 5-15` | Select MIFARE Classic 1K sectors. |
 | `--key-types A`, `B`, or `AB` | Select target key types. |
 | `--dictionary FILE` | Add a one-key-per-line dictionary. Repeatable. |
+| `--skip-dictionary` | Skip bundled and user-provided dictionary scanning entirely. |
 | `--samples N` | Hardnested RC522 trace count per target. Rounded up to even. |
 | `--nonce-type weak`, `hard` or `static` | Override classification for controlled testing. |
 | `--no-fallback` | Prevent Hardnested fallback after weak Nested failure. |
@@ -73,6 +74,10 @@ Running the same command again resumes the remaining targets.
 ### Smart key reuse
 
 After each discovery, the CLI tests all known key values across selected sectors. When Key A allows Key B to be read from a sector trailer, the extracted bytes are accepted only after a fresh Key B authentication succeeds.
+
+### Skip dictionary scans
+
+If you have already exhausted the bundled and custom dictionaries for a card, use `--skip-dictionary` to bypass that stage and move directly into nonce classification and recovery.
 
 ## `status`
 

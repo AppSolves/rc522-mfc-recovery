@@ -10,6 +10,7 @@ from .formats import convert_rc522_to_pm3
 from .models import CardInfo, KeyRecord, KeyType, NonceType, RecoveryState, normalize_key
 from .native import NativeTool
 from .paths import ToolPaths
+from .progress import ProgressUpdate
 from .solver import HardnestedSolver
 from .state import StateStore
 
@@ -24,6 +25,7 @@ class RecoveryOptions:
     force_nonce_type: NonceType | None = None
     fallback_hardnested: bool = True
     keep_traces: bool = True
+    skip_dictionary: bool = False
 
 
 class RecoveryWorkflow:
@@ -31,15 +33,35 @@ class RecoveryWorkflow:
         self,
         paths: ToolPaths,
         line_sink: Callable[[str], None] | None = None,
+        progress_sink: Callable[[ProgressUpdate], None] | None = None,
     ) -> None:
         self.paths = paths
         self.native = NativeTool(paths.native, line_sink=line_sink)
         self.solver = HardnestedSolver(paths.pm3, line_sink=line_sink)
         self.line_sink = line_sink
+        self.progress_sink = progress_sink
 
     def _say(self, text: str) -> None:
         if self.line_sink:
             self.line_sink(text)
+
+    def _update_progress(
+        self,
+        kind: str,
+        message: str,
+        *,
+        completed: int | None = None,
+        total: int | None = None,
+    ) -> None:
+        if self.progress_sink:
+            self.progress_sink(
+                ProgressUpdate(
+                    kind=kind,
+                    message=message,
+                    completed=completed,
+                    total=total,
+                )
+            )
 
     def identify(self) -> CardInfo:
         payload = self.native.identify()
@@ -51,8 +73,18 @@ class RecoveryWorkflow:
             reader_version=str(payload.get("reader_version", "")) or None,
         )
 
-    def classify_nonce(self, block: int = 0, samples: int = 128) -> NonceType:
-        payload = self.native.nonce_probe(block=block, samples=samples)
+    def classify_nonce(
+        self,
+        block: int = 0,
+        samples: int = 128,
+        *,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> NonceType:
+        payload = self.native.nonce_probe(
+            block=block,
+            samples=samples,
+            progress_callback=progress_callback,
+        )
         return NonceType(str(payload["classification"]))
 
     @staticmethod
@@ -134,6 +166,31 @@ class RecoveryWorkflow:
         if added:
             store.save(state)
         return added
+
+    @staticmethod
+    def _selected_target_total(options: RecoveryOptions) -> int:
+        return len(options.sectors) * len(options.key_types)
+
+    @staticmethod
+    def _selected_target_completion(state: RecoveryState, options: RecoveryOptions) -> int:
+        return sum(
+            state.get(sector, key_type) is not None
+            for sector in options.sectors
+            for key_type in options.key_types
+        )
+
+    def _sync_selected_target_progress(
+        self,
+        state: RecoveryState,
+        options: RecoveryOptions,
+        message: str,
+    ) -> None:
+        self._update_progress(
+            "overall",
+            message,
+            completed=self._selected_target_completion(state, options),
+            total=self._selected_target_total(options),
+        )
 
     def _propagate(
         self,
@@ -240,6 +297,12 @@ class RecoveryWorkflow:
                 output=raw,
                 meta=meta,
                 log_path=target_dir / "collect.log",
+                progress_callback=lambda current, total: self._update_progress(
+                    "stage",
+                    f"Collecting Hardnested traces for sector {sector} Key {key_type.value}",
+                    completed=current,
+                    total=total,
+                ),
             )
 
         pm3_file = target_dir / "pm3-nonces.bin"
@@ -261,25 +324,61 @@ class RecoveryWorkflow:
         card = self.identify()
         store = StateStore(self.paths.card_dir(card.uid))
         state = store.load_or_create(card)
+        self._sync_selected_target_progress(state, options, "Loaded saved recovery state")
 
         for sector, key_type, key in options.known:
+            self._update_progress(
+                "stage",
+                f"Verifying provided sector {sector} Key {key_type.value}",
+            )
             if not self._verify_and_save(state, store, sector, key_type, key, "provided"):
                 raise RuntimeError(
                     f"provided key failed verification for sector {sector} Key {key_type.value}"
                 )
+            self._sync_selected_target_progress(state, options, "Verified provided keys")
 
-        dictionary_values = self._load_dictionary_values(options.dictionaries)
-        if dictionary_values:
-            self._say(f"Scanning {len(dictionary_values)} common and user-provided keys")
-            self._scan_values(state, store, dictionary_values, options.sectors, "dictionary")
+        if options.skip_dictionary:
+            self._say("Skipping dictionary scan by request")
+            self._update_progress("stage", "Skipping bundled and user-provided dictionaries")
+        else:
+            dictionary_values = self._load_dictionary_values(options.dictionaries)
+            if dictionary_values:
+                self._say(f"Scanning {len(dictionary_values)} common and user-provided keys")
+                self._update_progress(
+                    "stage",
+                    f"Scanning {len(dictionary_values)} bundled and user dictionaries",
+                )
+                self._scan_values(state, store, dictionary_values, options.sectors, "dictionary")
+                self._sync_selected_target_progress(state, options, "Applied dictionary discoveries")
 
         self._propagate(state, store, options.sectors)
+        self._sync_selected_target_progress(state, options, "Applied key reuse checks")
 
-        nonce_type = options.force_nonce_type or self.classify_nonce(block=0, samples=128)
+        if options.force_nonce_type is None:
+            self._update_progress("stage", "Classifying nonce generator", completed=0, total=128)
+            nonce_type = self.classify_nonce(
+                block=0,
+                samples=128,
+                progress_callback=lambda current, total: self._update_progress(
+                    "stage",
+                    "Classifying nonce generator",
+                    completed=current,
+                    total=total,
+                ),
+            )
+        else:
+            nonce_type = options.force_nonce_type
+            self._update_progress(
+                "stage",
+                f"Using forced nonce type: {nonce_type.value}",
+                completed=1,
+                total=1,
+            )
         card.nonce_type = nonce_type
         state.card = card
         store.save(state)
         self._say(f"Nonce classification: {nonce_type.value}")
+        self._update_progress("stage", f"Nonce classification: {nonce_type.value}", completed=1, total=1)
 
         missing_targets = any(
             state.get(sector, key_type) is None
@@ -303,6 +402,7 @@ class RecoveryWorkflow:
                     continue
 
                 self._propagate(state, store, options.sectors)
+                self._sync_selected_target_progress(state, options, "Applied key reuse checks")
                 if state.get(sector, key_type) is not None:
                     continue
 
@@ -315,6 +415,10 @@ class RecoveryWorkflow:
 
                 if nonce_type is NonceType.WEAK:
                     self._say(f"Running weak Nested recovery for sector {sector} Key {key_type.value}")
+                    self._update_progress(
+                        "stage",
+                        f"Running weak Nested recovery for sector {sector} Key {key_type.value}",
+                    )
                     candidate = self.native.weak_nested(
                         known_block=source.sector * 4 + 3,
                         known_key_type=source.key_type,
@@ -343,6 +447,10 @@ class RecoveryWorkflow:
                 )
                 if should_use_hardnested:
                     recovery_source = "hardnested"
+                    self._update_progress(
+                        "stage",
+                        f"Preparing Hardnested recovery for sector {sector} Key {key_type.value}",
+                    )
                     candidate = self._recover_hardnested(
                         card=card,
                         store=store,
@@ -368,7 +476,13 @@ class RecoveryWorkflow:
                         f"for sector {sector} Key {key_type.value}"
                     )
                 self._say(f"Verified sector {sector} Key {key_type.value}: {candidate}")
+                self._sync_selected_target_progress(
+                    state,
+                    options,
+                    f"Verified sector {sector} Key {key_type.value}",
+                )
                 self._propagate(state, store, options.sectors)
+                self._sync_selected_target_progress(state, options, "Applied key reuse checks")
 
                 if not options.keep_traces:
                     for path in target_dir.glob("*nonces.bin"):

@@ -64,7 +64,7 @@ direct RC522 authentication verification
 For each selected card:
 
 1. Verify supplied seed keys.
-2. Test the bundled and user-provided dictionary.
+2. Test the bundled and user-provided dictionary unless `--skip-dictionary` disables that stage.
 3. When Key A succeeds, read the sector trailer and verify any exposed Key B.
 4. Test all known keys across all unknown sectors.
 5. Classify the nonce generator.

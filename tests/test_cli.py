@@ -23,3 +23,9 @@ def test_help_lists_recovery_commands() -> None:
     assert "recover" in result.stdout
     assert "inspect" in result.stdout
     assert "export" in result.stdout
+
+
+def test_recover_help_mentions_skip_dictionary() -> None:
+    result = runner.invoke(app, ["recover", "--help"])
+    assert result.exit_code == 0
+    assert "--skip-dictionary" in result.stdout

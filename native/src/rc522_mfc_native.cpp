@@ -371,6 +371,9 @@ int command_nonce_probe(const Args &args) {
         ++collected;
         ++frequency[nonce];
         if (canonical_weak_nonce(nonce)) ++weak;
+        if (collected % 32 == 0 || collected == wanted) {
+            std::cerr << "sampled " << collected << '/' << wanted << " nonce-probe samples\n";
+        }
     }
     if (collected == 0) throw std::runtime_error("could not collect nonces");
     int max_repeat = 0;

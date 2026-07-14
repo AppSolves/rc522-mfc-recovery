@@ -117,7 +117,7 @@ rc522-mfc recover \
 The automatic workflow performs these stages:
 
 1. verify every supplied key directly,
-2. test the bundled starter dictionary and optional user dictionaries,
+2. test the bundled starter dictionary and optional user dictionaries, unless `--skip-dictionary` is set,
 3. extract a readable Key B from a sector trailer when access conditions permit it,
 4. verify any extracted Key B through a fresh authentication,
 5. test every known key against all still-unknown sectors,
@@ -136,6 +136,14 @@ rc522-mfc recover \
 ```
 
 The option can be repeated. A dictionary file contains one 12-hex-character key per line.
+
+If you already know dictionary scanning will not help and want to go straight to nonce classification and recovery, skip that stage explicitly:
+
+```bash
+rc522-mfc recover \
+  --known 4:A=FFFFFFFFFFFF \
+  --skip-dictionary
+```
 
 An interrupted run is resumable. Verified keys and complete trace datasets are reused automatically. Trace metadata is checked against the UID, target block, key type, record count, and format before reuse.
 
