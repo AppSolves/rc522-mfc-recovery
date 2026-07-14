@@ -1,3 +1,4 @@
+from typer import unstyle
 from typer.testing import CliRunner
 
 from rc522_mfc.branding import banner_text
@@ -33,9 +34,17 @@ def test_help_lists_recovery_commands() -> None:
 
 
 def test_recover_help_mentions_skip_dictionary() -> None:
-    result = runner.invoke(app, ["recover", "--help"])
-    assert result.exit_code == 0
-    assert "--skip-dictionary" in result.stdout
+    result = runner.invoke(
+        app,
+        ["recover", "--help"],
+        color=False,
+        terminal_width=120,
+    )
+
+    assert result.exit_code == 0, result.output
+
+    help_text = unstyle(result.output)
+    assert "--skip-dictionary" in help_text
 
 
 def test_short_help_aliases_work() -> None:
