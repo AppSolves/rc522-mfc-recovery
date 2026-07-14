@@ -42,7 +42,7 @@ class WorkflowProgressDisplay:
             TextColumn("{task.fields[detail]}", justify="left"),
             console=console,
             expand=True,
-            transient=False,
+            transient=True,
         )
         self._overall_task: TaskID | None = None
         self._stage_task: TaskID | None = None
