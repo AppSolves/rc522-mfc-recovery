@@ -14,7 +14,14 @@ from rich.table import Table
 
 from . import __version__
 from .exporters import export_csv, export_json, export_mct_keys
-from .models import KeyType, NonceType, RecoveryState, parse_known_key, parse_sector_expression
+from .models import (
+    KeyRecord,
+    KeyType,
+    NonceType,
+    RecoveryState,
+    parse_known_key,
+    parse_sector_expression,
+)
 from .native import NativeTool
 from .paths import ToolPaths
 from .progress import ProgressUpdate, WorkflowProgressDisplay
@@ -96,6 +103,19 @@ def load_saved_state(paths: ToolPaths, uid: str) -> tuple[str, StateStore, Recov
 
 
 def print_key_table(state: RecoveryState) -> None:
+    def render_key(record: KeyRecord | None) -> str:
+        if record is None:
+            return "[dim]????????????[/dim]"
+        if record.verified:
+            return record.value
+        return f"[red]{record.value}[/red] [dim](unverified)[/dim]"
+
+    def render_source(prefix: str, record: KeyRecord | None) -> str:
+        if record is None:
+            return ""
+        suffix = "" if record.verified else " unverified"
+        return f"{prefix}:{record.source}{suffix}"
+
     table = Table(title=f"Key map for UID {state.card.uid}")
     table.add_column("Sector", justify="right")
     table.add_column("Key A")
@@ -107,15 +127,15 @@ def print_key_table(state: RecoveryState) -> None:
         sources = ", ".join(
             part
             for part in (
-                f"A:{key_a.source}" if key_a else "",
-                f"B:{key_b.source}" if key_b else "",
+                render_source("A", key_a),
+                render_source("B", key_b),
             )
             if part
         )
         table.add_row(
             str(sector),
-            key_a.value if key_a else "[dim]????????????[/dim]",
-            key_b.value if key_b else "[dim]????????????[/dim]",
+            render_key(key_a),
+            render_key(key_b),
             sources,
         )
     console.print(table)
@@ -250,12 +270,16 @@ def inspect_card(
         )
         nonce_type = workflow.classify_nonce(
             samples=samples,
-            progress_callback=lambda current, total: progress.handle_update(
+            progress_callback=lambda native_progress: progress.handle_update(
                 ProgressUpdate(
                     "stage",
                     "Sampling nonce generator",
-                    completed=current,
-                    total=total,
+                    completed=native_progress.completed,
+                    total=native_progress.total,
+                    detail=RecoveryWorkflow._native_progress_detail(
+                        native_progress,
+                        "samples",
+                    ),
                 )
             ),
         )
@@ -442,9 +466,9 @@ def export_command(
     else:
         paths = ensure_toolchain(require_pm3=False)
         if not state.has_key_for_every_sector():
-            raise RuntimeError("a full dump requires at least one recovered key for every sector")
+            raise RuntimeError("a full dump requires at least one verified key for every sector")
         NativeTool(paths.native, line_sink=line_sink).dump(
-            state.all_records(),
+            state.verified_records(),
             destination,
             work_dir=store.card_dir / "tmp",
         )

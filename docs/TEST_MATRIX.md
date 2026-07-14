@@ -19,7 +19,7 @@
 
 No card UID, key, nonce file, hash, or dump from the validation card is included in this repository.
 
-The validated hardware run exercised the same native Hardnested acquisition, parity conversion, Proxmark3 offline solving, and direct verification path used here. The final Typer orchestration layer has automated tests and a hardware-free native build, but this publication archive has not been rerun end to end on physical hardware after the final CLI refactor.
+The validated hardware run exercised the same native Hardnested acquisition, parity conversion, Proxmark3 offline solving, and direct verification path used here. The final Typer orchestration layer has automated tests and a hardware-free native build, but this publication archive has not been rerun end to end on physical hardware after the final CLI/progress/native-auth refactor.
 
 ## Automated tests
 
@@ -34,6 +34,7 @@ GitHub Actions runs:
 ## Not yet hardware-revalidated in this release
 
 - weak-PRNG card recovery after the generic CLI refactor
+- physical-card revalidation after the native manual-auth and progress reporting fixes
 - MFRC522 VersionReg `0x91`
 - Raspberry Pi 4
 - armhf Raspberry Pi OS

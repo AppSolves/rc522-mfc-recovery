@@ -17,8 +17,8 @@ def export_csv(state: RecoveryState, output: Path) -> Path:
         writer = csv.writer(handle)
         writer.writerow(["sector", "key_a", "key_b", "source_a", "source_b"])
         for sector in range(16):
-            a = state.get(sector, KeyType.A)
-            b = state.get(sector, KeyType.B)
+            a = state.get_verified(sector, KeyType.A)
+            b = state.get_verified(sector, KeyType.B)
             writer.writerow(
                 [
                     sector,

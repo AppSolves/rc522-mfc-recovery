@@ -13,7 +13,7 @@ It never implements Crypto1 search itself. It invokes two isolated executables:
 
 ### Native RC522 helper
 
-The native helper is a single C++ executable with machine-readable output prefixed by `RC522_JSON:`. Its commands are:
+The native helper is a single C++ executable. Final command results are emitted as machine-readable lines prefixed by `RC522_JSON:`. Long-running commands additionally emit structured progress lines prefixed by `RC522_PROGRESS:`.
 
 - `reader-version`
 - `identify`
@@ -25,6 +25,8 @@ The native helper is a single C++ executable with machine-readable output prefix
 - `dump`
 
 The core reader and weak-Nested implementation is a modified copy of Håkon Hystad's GPL-3.0 project.
+
+`keyscan`, `nonce-probe`, and `collect-hardnested` progress events include completed and total counts. Native acquisition events also include attempt counts, and Hardnested collection includes consecutive failure counts so the Python control plane can surface stalled hardware or invalid seed-key behavior without parsing human text.
 
 ### Hardnested data path
 
@@ -79,6 +81,8 @@ This ordering minimizes expensive nonce collection when deployments reuse keys.
 ## State model
 
 State is stored per UID under the platform data directory. A key is accepted only after direct authentication. Each record stores its source, verification status, and discovery time.
+
+Records marked unverified remain in JSON state for auditability, but workflow completion, key reuse, CSV export, `.keys` export, and dump export all use verified records only.
 
 Raw trace files and solver logs live beside the private state, not in the source checkout.
 

@@ -27,11 +27,13 @@ Proxmark3 expects the parity bit order reversed inside each nibble, so the conve
 
 ## State JSON
 
-`state.json` contains card metadata and verified key records. It is private and should not be committed.
+`state.json` contains card metadata and saved key records, including each record's `verified` flag. It is private and should not be committed.
+
+Unverified records are retained so `status` and `verify` can show what failed and retry it later. They are not used for recovery completion, key reuse, CSV export, `.keys` export, or dump export.
 
 ## MCT `.keys`
 
-The export is one unique 12-hex-character key per line. Comments are not included.
+The export is one unique verified 12-hex-character key per line. Comments are not included.
 
 ## Binary dump
 

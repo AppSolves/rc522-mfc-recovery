@@ -40,6 +40,8 @@ rc522-mfc inspect
 rc522-mfc inspect --samples 256
 ```
 
+The sampling phase shows collected sample count and native attempt count in the Rich progress display.
+
 ## `recover`
 
 Run the complete recovery workflow.
@@ -70,6 +72,10 @@ Important options:
 The state file is updated after every verified key. Complete Hardnested datasets are reused only when their size and metadata match the current UID and target.
 
 Running the same command again resumes the remaining targets.
+
+### Progress display
+
+`recover` keeps one overall key-completion bar and one phase bar. Dictionary scans, nonce classification, and Hardnested trace collection are determinate. Hardnested collection includes attempt count and consecutive failure count so a stalled card or bad seed key is visible before the command exits. The offline Proxmark3 solver is intentionally indeterminate because the solver does not emit a reliable total-work value.
 
 ### Smart key reuse
 
@@ -106,4 +112,6 @@ rc522-mfc export DEADBEEF --format keys
 rc522-mfc export DEADBEEF --format dump
 ```
 
-The dump export requires at least one recovered key for every sector. The native reader still reports a clear block-specific error when the available key does not have read permission for a block.
+CSV, `.keys`, and dump export use verified keys only. JSON preserves the full state, including unverified records.
+
+The dump export requires at least one verified key for every sector. The native reader still reports a clear block-specific error when the available key does not have read permission for a block.

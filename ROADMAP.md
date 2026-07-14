@@ -3,7 +3,7 @@
 ## Near term
 
 - Hardware regression test with a weak-PRNG MIFARE Classic 1K card
-- Structured Rich progress bars for acquisition and solver stages
+- Physical-card regression run after the native manual-auth and progress reporting fixes
 - Signed release archives and checksums
 - More fixture-based tests for Proxmark3 file conversion
 - Optional trace-count adaptation based on first-byte coverage

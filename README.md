@@ -127,6 +127,8 @@ The automatic workflow performs these stages:
 9. verify the recovered candidate directly,
 10. repeat global key-reuse checks and continue.
 
+Long stages use Rich progress rows. Dictionary scans, nonce classification, and Hardnested trace collection report determinate counts. Hardnested collection also reports native attempts and consecutive failures. The offline Proxmark3 solver is shown as an indeterminate stage because it does not expose a stable candidate-count progress value.
+
 Use an additional MCT-compatible dictionary when appropriate:
 
 ```bash
@@ -188,11 +190,11 @@ rc522-mfc export DEADBEEF --format dump
 Export formats:
 
 - `json`: full key map, metadata, discovery source, verification state.
-- `csv`: sector-oriented key table.
-- `keys`: one unique key per line, compatible with MIFARE Classic Tool key files.
-- `dump`: 1,024-byte MIFARE Classic binary image. Recovered key bytes are inserted into sector trailer key fields because Key A is masked during normal card reads.
+- `csv`: sector-oriented table containing verified keys only.
+- `keys`: one unique verified key per line, compatible with MIFARE Classic Tool key files.
+- `dump`: 1,024-byte MIFARE Classic binary image. Verified recovered key bytes are inserted into sector trailer key fields because Key A is masked during normal card reads.
 
-The dump reader tries verified Key A and Key B independently for each block, which supports sectors whose access conditions require different keys for different blocks.
+The dump reader tries verified Key A and Key B independently for each block, which supports sectors whose access conditions require different keys for different blocks. Keys marked unverified by `rc522-mfc verify` remain visible in JSON and `status`, but they are not treated as recovered for reuse, CSV, `.keys`, or dump export.
 
 ## Dependency strategy
 

@@ -84,6 +84,12 @@ class RecoveryState:
     def get(self, sector: int, key_type: KeyType) -> KeyRecord | None:
         return self.keys.get(str(sector), {}).get(key_type.value)
 
+    def get_verified(self, sector: int, key_type: KeyType) -> KeyRecord | None:
+        record = self.get(sector, key_type)
+        if record is None or not record.verified:
+            return None
+        return record
+
     def put(self, record: KeyRecord) -> None:
         self.keys.setdefault(str(record.sector), {})[record.key_type.value] = record
 
@@ -96,15 +102,19 @@ class RecoveryState:
                     records.append(record)
         return records
 
+    def verified_records(self) -> list[KeyRecord]:
+        return [record for record in self.all_records() if record.verified]
+
     def unique_key_values(self) -> list[str]:
-        return sorted({record.value for record in self.all_records() if record.verified})
+        return sorted({record.value for record in self.verified_records()})
 
     def complete(self) -> bool:
-        return all(self.get(sector, kind) is not None for sector in range(16) for kind in KeyType)
+        return all(self.get_verified(sector, kind) is not None for sector in range(16) for kind in KeyType)
 
     def has_key_for_every_sector(self) -> bool:
         return all(
-            self.get(sector, KeyType.A) is not None or self.get(sector, KeyType.B) is not None
+            self.get_verified(sector, KeyType.A) is not None
+            or self.get_verified(sector, KeyType.B) is not None
             for sector in range(16)
         )
 

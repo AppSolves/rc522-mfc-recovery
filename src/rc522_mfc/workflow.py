@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .formats import convert_rc522_to_pm3
 from .models import CardInfo, KeyRecord, KeyType, NonceType, RecoveryState, normalize_key
-from .native import NativeTool
+from .native import NativeProgress, NativeTool
 from .paths import ToolPaths
 from .progress import ProgressUpdate
 from .solver import HardnestedSolver
@@ -52,6 +52,7 @@ class RecoveryWorkflow:
         *,
         completed: int | None = None,
         total: int | None = None,
+        detail: str | None = None,
     ) -> None:
         if self.progress_sink:
             self.progress_sink(
@@ -60,8 +61,18 @@ class RecoveryWorkflow:
                     message=message,
                     completed=completed,
                     total=total,
+                    detail=detail,
                 )
             )
+
+    @staticmethod
+    def _native_progress_detail(progress: NativeProgress, noun: str) -> str:
+        parts = [f"{progress.completed}/{progress.total} {noun}"]
+        if progress.attempts is not None and progress.max_attempts is not None:
+            parts.append(f"attempts {progress.attempts}/{progress.max_attempts}")
+        if progress.consecutive_failures:
+            parts.append(f"consecutive failures {progress.consecutive_failures}")
+        return " | ".join(parts)
 
     def identify(self) -> CardInfo:
         payload = self.native.identify()
@@ -78,7 +89,7 @@ class RecoveryWorkflow:
         block: int = 0,
         samples: int = 128,
         *,
-        progress_callback: Callable[[int, int], None] | None = None,
+        progress_callback: Callable[[NativeProgress], None] | None = None,
     ) -> NonceType:
         payload = self.native.nonce_probe(
             block=block,
@@ -153,11 +164,31 @@ class RecoveryWorkflow:
         values: Iterable[str],
         sectors: list[int],
         source: str,
+        *,
+        progress_label: str | None = None,
     ) -> int:
-        hits = self.native.keyscan(values, sectors, work_dir=store.card_dir / "tmp")
+        hits = self.native.keyscan(
+            values,
+            sectors,
+            work_dir=store.card_dir / "tmp",
+            progress_callback=(
+                None
+                if progress_label is None
+                else lambda progress: self._update_progress(
+                    "stage",
+                    (
+                        f"{progress_label}: sector {progress.sector} "
+                        f"Key {progress.key_type.value if progress.key_type else '?'}"
+                    ),
+                    completed=progress.completed,
+                    total=progress.total,
+                    detail=self._native_progress_detail(progress, "candidates"),
+                )
+            ),
+        )
         added = 0
         for hit in hits:
-            if state.get(hit.sector, hit.key_type) is None:
+            if state.get_verified(hit.sector, hit.key_type) is None:
                 if hit.source != "sector-trailer":
                     hit.source = source
                 hit.discovered_at = self._timestamp()
@@ -174,7 +205,7 @@ class RecoveryWorkflow:
     @staticmethod
     def _selected_target_completion(state: RecoveryState, options: RecoveryOptions) -> int:
         return sum(
-            state.get(sector, key_type) is not None
+            state.get_verified(sector, key_type) is not None
             for sector in options.sectors
             for key_type in options.key_types
         )
@@ -201,14 +232,21 @@ class RecoveryWorkflow:
         values = state.unique_key_values()
         if not values:
             return 0
-        added = self._scan_values(state, store, values, sectors, "reused-key")
+        added = self._scan_values(
+            state,
+            store,
+            values,
+            sectors,
+            "reused-key",
+            progress_label="Testing reused verified keys",
+        )
         if added:
             self._say(f"Key reuse discovered {added} additional sector key(s)")
         return added
 
     @staticmethod
     def _choose_source(state: RecoveryState, target_sector: int) -> KeyRecord:
-        records = [record for record in state.all_records() if record.verified]
+        records = state.verified_records()
         if not records:
             raise RuntimeError("at least one verified key is required for nested recovery")
         different = [record for record in records if record.sector != target_sector]
@@ -283,10 +321,24 @@ class RecoveryWorkflow:
             samples=samples,
         ):
             self._say(f"Reusing complete trace dataset for sector {sector} Key {key_type.value}")
+            self._update_progress(
+                "stage",
+                f"Reusing Hardnested traces for sector {sector} Key {key_type.value}",
+                completed=1,
+                total=1,
+                detail=f"{samples}/{samples} records",
+            )
         else:
             raw.unlink(missing_ok=True)
             meta.unlink(missing_ok=True)
             self._say(f"Collecting Hardnested traces for sector {sector} Key {key_type.value}")
+            self._update_progress(
+                "stage",
+                f"Collecting Hardnested traces for sector {sector} Key {key_type.value}",
+                completed=0,
+                total=samples,
+                detail=f"0/{samples} records",
+            )
             self.native.collect_hardnested(
                 known_block=known_block,
                 known_key_type=source.key_type,
@@ -297,15 +349,22 @@ class RecoveryWorkflow:
                 output=raw,
                 meta=meta,
                 log_path=target_dir / "collect.log",
-                progress_callback=lambda current, total: self._update_progress(
+                progress_callback=lambda progress: self._update_progress(
                     "stage",
                     f"Collecting Hardnested traces for sector {sector} Key {key_type.value}",
-                    completed=current,
-                    total=total,
+                    completed=progress.completed,
+                    total=progress.total,
+                    detail=self._native_progress_detail(progress, "records"),
                 ),
             )
 
         pm3_file = target_dir / "pm3-nonces.bin"
+        self._update_progress(
+            "stage",
+            f"Converting Hardnested traces for sector {sector} Key {key_type.value}",
+            completed=0,
+            total=1,
+        )
         conversion = convert_rc522_to_pm3(
             raw,
             pm3_file,
@@ -313,10 +372,22 @@ class RecoveryWorkflow:
             target_block=target_block,
             target_key_type=key_type,
         )
+        self._update_progress(
+            "stage",
+            f"Converting Hardnested traces for sector {sector} Key {key_type.value}",
+            completed=1,
+            total=1,
+            detail=f"{conversion.records} records | coverage {conversion.first_byte_coverage}/256",
+        )
         self._say(
             f"Converted {conversion.records} traces, first-byte coverage "
             f"{conversion.first_byte_coverage}/256, First_Byte_Sum "
             f"{conversion.first_byte_sum}"
+        )
+        self._update_progress(
+            "stage",
+            f"Solving Hardnested key for sector {sector} Key {key_type.value}",
+            detail="offline PM3 solver running",
         )
         return self.solver.solve(pm3_file, log_path=target_dir / "solve.log")
 
@@ -348,7 +419,14 @@ class RecoveryWorkflow:
                     "stage",
                     f"Scanning {len(dictionary_values)} bundled and user dictionaries",
                 )
-                self._scan_values(state, store, dictionary_values, options.sectors, "dictionary")
+                self._scan_values(
+                    state,
+                    store,
+                    dictionary_values,
+                    options.sectors,
+                    "dictionary",
+                    progress_label="Scanning dictionary candidates",
+                )
                 self._sync_selected_target_progress(state, options, "Applied dictionary discoveries")
 
         self._propagate(state, store, options.sectors)
@@ -359,11 +437,12 @@ class RecoveryWorkflow:
             nonce_type = self.classify_nonce(
                 block=0,
                 samples=128,
-                progress_callback=lambda current, total: self._update_progress(
+                progress_callback=lambda progress: self._update_progress(
                     "stage",
                     "Classifying nonce generator",
-                    completed=current,
-                    total=total,
+                    completed=progress.completed,
+                    total=progress.total,
+                    detail=self._native_progress_detail(progress, "samples"),
                 ),
             )
         else:
@@ -381,7 +460,7 @@ class RecoveryWorkflow:
         self._update_progress("stage", f"Nonce classification: {nonce_type.value}", completed=1, total=1)
 
         missing_targets = any(
-            state.get(sector, key_type) is None
+            state.get_verified(sector, key_type) is None
             for sector in options.sectors
             for key_type in options.key_types
         )
@@ -398,12 +477,12 @@ class RecoveryWorkflow:
 
         for sector in options.sectors:
             for key_type in options.key_types:
-                if state.get(sector, key_type) is not None:
+                if state.get_verified(sector, key_type) is not None:
                     continue
 
                 self._propagate(state, store, options.sectors)
                 self._sync_selected_target_progress(state, options, "Applied key reuse checks")
-                if state.get(sector, key_type) is not None:
+                if state.get_verified(sector, key_type) is not None:
                     continue
 
                 source = self._choose_source(state, sector)
@@ -428,6 +507,13 @@ class RecoveryWorkflow:
                         log_path=target_dir / "weak-nested.log",
                     )
                     if candidate is not None:
+                        self._update_progress(
+                            "stage",
+                            f"Verifying recovered sector {sector} Key {key_type.value}",
+                            completed=0,
+                            total=1,
+                            detail=f"candidate {candidate}",
+                        )
                         if self._verify_and_save(
                             state,
                             store,
@@ -436,8 +522,20 @@ class RecoveryWorkflow:
                             candidate,
                             "weak-nested",
                         ):
+                            self._update_progress(
+                                "stage",
+                                f"Verifying recovered sector {sector} Key {key_type.value}",
+                                completed=1,
+                                total=1,
+                                detail="direct RC522 authentication passed",
+                            )
                             self._say(f"Verified sector {sector} Key {key_type.value}: {candidate}")
                             self._propagate(state, store, options.sectors)
+                            self._sync_selected_target_progress(
+                                state,
+                                options,
+                                f"Verified sector {sector} Key {key_type.value}",
+                            )
                             continue
                         self._say("Weak Nested produced an unverifiable candidate")
                         candidate = None
@@ -463,6 +561,13 @@ class RecoveryWorkflow:
                 if candidate is None:
                     raise RuntimeError(f"failed to recover sector {sector} Key {key_type.value}")
 
+                self._update_progress(
+                    "stage",
+                    f"Verifying recovered sector {sector} Key {key_type.value}",
+                    completed=0,
+                    total=1,
+                    detail=f"candidate {candidate}",
+                )
                 if not self._verify_and_save(
                     state,
                     store,
@@ -475,6 +580,13 @@ class RecoveryWorkflow:
                         f"solver candidate {candidate} failed direct RC522 verification "
                         f"for sector {sector} Key {key_type.value}"
                     )
+                self._update_progress(
+                    "stage",
+                    f"Verifying recovered sector {sector} Key {key_type.value}",
+                    completed=1,
+                    total=1,
+                    detail="direct RC522 authentication passed",
+                )
                 self._say(f"Verified sector {sector} Key {key_type.value}: {candidate}")
                 self._sync_selected_target_progress(
                     state,

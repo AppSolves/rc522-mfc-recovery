@@ -28,6 +28,11 @@ namespace {
 using Key = std::array<byte, 6>;
 std::atomic<bool> g_stop{false};
 
+constexpr auto PROGRESS_HEARTBEAT = std::chrono::milliseconds(750);
+constexpr std::size_t HARDNESTED_ATTEMPT_MULTIPLIER = 10;
+constexpr std::size_t HARDNESTED_MIN_EXTRA_ATTEMPTS = 1000;
+constexpr std::size_t HARDNESTED_MAX_CONSECUTIVE_FAILURES = 250;
+
 void on_signal(int) { g_stop.store(true); }
 
 void sleep_ms(unsigned ms) {
@@ -57,6 +62,40 @@ std::string json_escape(const std::string &value) {
 
 void emit_json(const std::string &payload) {
     std::cout << "RC522_JSON:" << payload << std::endl;
+}
+
+struct ProgressDetails {
+    int sector = -1;
+    char key_type = '\0';
+    std::size_t attempts = 0;
+    std::size_t max_attempts = 0;
+    std::size_t consecutive_failures = 0;
+    bool include_attempts = false;
+};
+
+void emit_progress(
+    const std::string &operation,
+    std::size_t completed,
+    std::size_t total,
+    const ProgressDetails &details = {}
+) {
+    std::ostringstream json;
+    json << "{\"operation\":\"" << json_escape(operation)
+         << "\",\"completed\":" << completed
+         << ",\"total\":" << total;
+    if (details.sector >= 0) {
+        json << ",\"sector\":" << details.sector;
+    }
+    if (details.key_type != '\0') {
+        json << ",\"key_type\":\"" << details.key_type << '"';
+    }
+    if (details.include_attempts) {
+        json << ",\"attempts\":" << details.attempts
+             << ",\"max_attempts\":" << details.max_attempts
+             << ",\"consecutive_failures\":" << details.consecutive_failures;
+    }
+    json << '}';
+    std::cerr << "RC522_PROGRESS:" << json.str() << std::endl;
 }
 
 struct Args {
@@ -292,15 +331,42 @@ int command_keyscan(const Args &args) {
         std::string method;
     };
     std::vector<Hit> hits;
+    const std::size_t total_keys = keys.size();
+
+    auto emit_keyscan_progress = [total_keys](std::size_t tested, int sector, char type) {
+        ProgressDetails details;
+        details.sector = sector;
+        details.key_type = type;
+        emit_progress("keyscan", tested, total_keys, details);
+    };
 
     for (int sector : sectors) {
         const byte trailer_block = static_cast<byte>(sector * 4 + 3);
         bool found_a = false;
         bool found_b = false;
+        std::size_t tested_a = 0;
+        std::size_t tested_b = 0;
+        std::size_t reported_a = 0;
+        std::size_t reported_b = 0;
+        auto last_a_progress = std::chrono::steady_clock::now();
 
+        emit_keyscan_progress(0, sector, 'A');
         for (Key candidate : keys) {
             if (g_stop.load()) break;
-            if (!authenticate_fresh(reader, AUTHENT_A, trailer_block, candidate)) {
+            ++tested_a;
+            const bool authenticated = authenticate_fresh(
+                reader,
+                AUTHENT_A,
+                trailer_block,
+                candidate
+            );
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last_a_progress >= PROGRESS_HEARTBEAT) {
+                emit_keyscan_progress(tested_a, sector, 'A');
+                reported_a = tested_a;
+                last_a_progress = now;
+            }
+            if (!authenticated) {
                 continue;
             }
 
@@ -323,17 +389,38 @@ int command_keyscan(const Args &args) {
             }
             break;
         }
+        if (tested_a != reported_a) {
+            emit_keyscan_progress(tested_a, sector, 'A');
+        }
 
         if (!found_b) {
+            emit_keyscan_progress(0, sector, 'B');
+            auto last_b_progress = std::chrono::steady_clock::now();
             for (Key candidate : keys) {
                 if (g_stop.load()) break;
-                if (authenticate_fresh(reader, AUTHENT_B, trailer_block, candidate)) {
+                ++tested_b;
+                const bool authenticated = authenticate_fresh(
+                    reader,
+                    AUTHENT_B,
+                    trailer_block,
+                    candidate
+                );
+                const auto now = std::chrono::steady_clock::now();
+                if (now - last_b_progress >= PROGRESS_HEARTBEAT) {
+                    emit_keyscan_progress(tested_b, sector, 'B');
+                    reported_b = tested_b;
+                    last_b_progress = now;
+                }
+                if (authenticated) {
                     found_b = true;
                     hits.push_back(
                         {sector, 'B', format_key(candidate), "dictionary"}
                     );
                     break;
                 }
+            }
+            if (tested_b != reported_b) {
+                emit_keyscan_progress(tested_b, sector, 'B');
             }
         }
 
@@ -365,15 +452,37 @@ int command_nonce_probe(const Args &args) {
     int weak = 0;
     int collected = 0;
     const int maximum_attempts = std::max(wanted * 4, wanted + 32);
-    for (int attempt = 0; attempt < maximum_attempts && collected < wanted && !g_stop.load(); ++attempt) {
+    auto last_progress = std::chrono::steady_clock::now();
+    auto emit_nonce_progress = [&](int attempts) {
+        ProgressDetails details;
+        details.include_attempts = true;
+        details.attempts = static_cast<std::size_t>(attempts);
+        details.max_attempts = static_cast<std::size_t>(maximum_attempts);
+        emit_progress(
+            "nonce-probe",
+            static_cast<std::size_t>(collected),
+            static_cast<std::size_t>(wanted),
+            details
+        );
+    };
+
+    emit_nonce_progress(0);
+    int attempts = 0;
+    for (; attempts < maximum_attempts && collected < wanted && !g_stop.load(); ++attempts) {
         uint32_t nonce = 0;
-        if (!reader.sampleNonce(AUTHENT_A, static_cast<byte>(block), &nonce)) continue;
-        ++collected;
-        ++frequency[nonce];
-        if (canonical_weak_nonce(nonce)) ++weak;
-        if (collected % 32 == 0 || collected == wanted) {
-            std::cerr << "sampled " << collected << '/' << wanted << " nonce-probe samples\n";
+        if (reader.sampleNonce(AUTHENT_A, static_cast<byte>(block), &nonce)) {
+            ++collected;
+            ++frequency[nonce];
+            if (canonical_weak_nonce(nonce)) ++weak;
         }
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_progress >= PROGRESS_HEARTBEAT || collected == wanted) {
+            emit_nonce_progress(attempts + 1);
+            last_progress = now;
+        }
+    }
+    if (collected < wanted) {
+        emit_nonce_progress(attempts);
     }
     if (collected == 0) throw std::runtime_error("could not collect nonces");
     int max_repeat = 0;
@@ -448,8 +557,30 @@ int command_collect_hardnested(const Args &args) {
     std::size_t collected = 0;
     std::size_t attempts = 0;
     std::size_t parity_valid = 0;
+    std::size_t consecutive_failures = 0;
+    const std::size_t wanted_count = static_cast<std::size_t>(wanted);
+    const std::size_t max_attempts = std::max(
+        wanted_count * HARDNESTED_ATTEMPT_MULTIPLIER,
+        wanted_count + HARDNESTED_MIN_EXTRA_ATTEMPTS
+    );
+    auto last_progress = std::chrono::steady_clock::now();
+    auto emit_hardnested_progress = [&]() {
+        ProgressDetails details;
+        details.include_attempts = true;
+        details.attempts = attempts;
+        details.max_attempts = max_attempts;
+        details.consecutive_failures = consecutive_failures;
+        emit_progress("hardnested", collected, wanted_count, details);
+    };
 
-    while (collected < static_cast<std::size_t>(wanted) && !g_stop.load()) {
+    emit_hardnested_progress();
+
+    while (
+        collected < wanted_count &&
+        attempts < max_attempts &&
+        consecutive_failures < HARDNESTED_MAX_CONSECUTIVE_FAILURES &&
+        !g_stop.load()
+    ) {
         ++attempts;
         uint32_t encrypted_nonce = 0;
         byte encrypted_parity = 0;
@@ -461,8 +592,16 @@ int command_collect_hardnested(const Args &args) {
                 static_cast<byte>(target_block),
                 &encrypted_nonce,
                 &encrypted_parity)) {
+            ++consecutive_failures;
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last_progress >= PROGRESS_HEARTBEAT) {
+                emit_hardnested_progress();
+                output.flush();
+                last_progress = now;
+            }
             continue;
         }
+        consecutive_failures = 0;
         const std::array<byte, 5> record{
             static_cast<byte>((encrypted_nonce >> 24) & 0xFF),
             static_cast<byte>((encrypted_nonce >> 16) & 0xFF),
@@ -479,12 +618,17 @@ int command_collect_hardnested(const Args &args) {
             const auto plain = decrypt_nested_nonce(uid, encrypted_nonce, key_to_integer(validation_key));
             if (validate_parity(plain, encrypted_nonce, encrypted_parity)) ++parity_valid;
         }
-        if (collected % 1000 == 0 || collected == static_cast<std::size_t>(wanted)) {
-            std::cerr << "collected " << collected << '/' << wanted << " hardnested samples\n";
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_progress >= PROGRESS_HEARTBEAT || collected == wanted_count) {
+            emit_hardnested_progress();
             output.flush();
+            last_progress = now;
         }
     }
     output.flush();
+    if (collected < wanted_count) {
+        emit_hardnested_progress();
+    }
     const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     std::size_t coverage = 0;
     for (bool value : first_byte_seen) if (value) ++coverage;
@@ -506,16 +650,29 @@ int command_collect_hardnested(const Args &args) {
          << "elapsed_seconds=" << elapsed << '\n';
     if (validation) meta << "validation_successes=" << parity_valid << '\n';
 
-    const bool complete = collected == static_cast<std::size_t>(wanted);
+    const bool complete = collected == wanted_count;
+    std::string error;
+    if (!complete) {
+        if (g_stop.load()) {
+            error = "interrupted while collecting Hardnested traces";
+        } else if (consecutive_failures >= HARDNESTED_MAX_CONSECUTIVE_FAILURES) {
+            error = "Hardnested trace collection stalled after repeated authentication failures";
+        } else if (attempts >= max_attempts) {
+            error = "Hardnested trace collection reached the attempt limit before collecting enough samples";
+        } else {
+            error = "Hardnested trace collection stopped before collecting enough samples";
+        }
+    }
     std::ostringstream json;
     json << "{\"ok\":" << (complete ? "true" : "false") << ",\"uid\":\"" << format_uid(uid)
          << "\",\"records\":" << collected << ",\"attempts\":" << attempts << ",\"unique\":" << unique.size()
          << ",\"first_byte_coverage\":" << coverage << ",\"output\":\"" << json_escape(output_name)
          << "\",\"meta\":\"" << json_escape(meta_name) << "\"";
     if (validation) json << ",\"validation_successes\":" << parity_valid;
+    if (!complete) json << ",\"error\":\"" << json_escape(error) << "\"";
     json << '}';
     emit_json(json.str());
-    return complete ? 0 : 130;
+    return complete ? 0 : (g_stop.load() ? 130 : 5);
 }
 
 struct SectorKeys { bool has_a = false; bool has_b = false; Key a{}; Key b{}; };

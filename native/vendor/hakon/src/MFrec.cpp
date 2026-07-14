@@ -8,6 +8,18 @@
 
 #include "MFrec.h"
 
+namespace {
+
+constexpr bool tagAnswerMatches(uint32_t actual, uint32_t expected)
+{
+    return actual == expected;
+}
+
+static_assert(tagAnswerMatches(0x12345678U, 0x12345678U));
+static_assert(!tagAnswerMatches(0x00005678U, 0x12345678U));
+
+}  // namespace
+
 
 /*=============================================================================================================
 
@@ -357,7 +369,11 @@ bool MFrec::authenticateManually( byte command, byte blockAddr, uint32_t *n_T, b
     std::cout << "Using key: "<< std::hex << sectorKey << std::dec << std::endl;
 #endif
 	
-    keystream = crypto1_create( sectorKey );
+	if (keystream != nullptr)
+	{
+	    crypto1_destroy(keystream);
+	}
+	keystream = crypto1_create( sectorKey );
 
     // append uid ^n_T (32 bits) to keystream
     crypto1_word( keystream, *n_T ^ UID, 0/*not encrypted*/);
@@ -417,9 +433,9 @@ bool MFrec::authenticateManually( byte command, byte blockAddr, uint32_t *n_T, b
     // decrypt a_T
     a_T = crypto1_word( keystream, 0x00, 0 ) ^ a_T;
 
-    if( a_T != (*n_T & 0xFFFFU) )
+    if( !tagAnswerMatches(a_T, *n_T) )
     {
-	std::cerr << "Incorrect TAG answer\n";
+	if (!quiet_) std::cerr << "Incorrect TAG answer\n";
 	parityOn();
 	return false;
     }
@@ -651,6 +667,10 @@ uint32_t MFrec::nonceDistance( uint32_t *n_T )
 	encNonce = bytesToInt( data, 4 );
     
 	// reset keystream
+	if (keystream != nullptr)
+	{
+	    crypto1_destroy(keystream);
+	}
 	keystream = crypto1_create( m_authInfo->key );
 
 	newNonce = encNonce ^ crypto1_word( keystream, encNonce ^ UID, 1 );// decrypt nonce

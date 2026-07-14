@@ -29,6 +29,12 @@ Do not solve the file. The usual causes are:
 
 The built-in converter rejects invalid complete datasets automatically.
 
+## Hardnested collection stops before all samples are collected
+
+The collector exits with an explicit error when it reaches the native attempt limit or stalls after repeated authentication failures. Check the seed key, keep the card motionless on the antenna, and rerun with the same command. Complete datasets are reused automatically; incomplete datasets are recollected.
+
+The progress display shows collected records, total records, native attempts, and consecutive failures. If collected records do not increase while consecutive failures climb, the problem is before the offline solver: card coupling, card movement, reader communication, or an invalid known key.
+
 ## Proxmark3 client build fails on a warning
 
 The pinned build uses `NOERROR=1` because recent GCC versions can emit warnings in unrelated Proxmark3 commands. The Hardnested sources are still compiled normally.
