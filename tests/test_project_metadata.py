@@ -9,3 +9,9 @@ def test_direct_runtime_imports_are_declared() -> None:
     dependencies = metadata["project"]["dependencies"]
 
     assert any(dependency.startswith("click") for dependency in dependencies)
+
+
+def test_bootstrap_verifies_cli_import_path() -> None:
+    bootstrap = Path("scripts/bootstrap.sh").read_text(encoding="utf-8")
+
+    assert "import click; import rc522_mfc.cli" in bootstrap
