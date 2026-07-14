@@ -29,3 +29,25 @@ def test_recover_help_mentions_skip_dictionary() -> None:
     result = runner.invoke(app, ["recover", "--help"])
     assert result.exit_code == 0
     assert "--skip-dictionary" in result.stdout
+
+
+def test_short_help_aliases_work() -> None:
+    assert runner.invoke(app, ["-h"]).exit_code == 0
+    assert runner.invoke(app, ["/?"]).exit_code == 0
+    assert runner.invoke(app, ["recover", "-h"]).exit_code == 0
+    assert runner.invoke(app, ["recover", "/?"]).exit_code == 0
+
+
+def test_status_rejects_short_uid_with_helpful_message() -> None:
+    result = runner.invoke(app, ["status", "F"])
+    assert result.exit_code == 1
+    assert result.exception is not None
+    assert "exactly 8 hexadecimal characters" in str(result.exception)
+
+
+def test_status_reports_missing_state_helpfully() -> None:
+    result = runner.invoke(app, ["status", "DEADBEEF"])
+    assert result.exit_code == 1
+    assert result.exception is not None
+    assert "no saved recovery state exists for UID DEADBEEF" in str(result.exception)
+    assert "rc522-mfc recover" in str(result.exception)

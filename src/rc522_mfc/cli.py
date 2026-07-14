@@ -27,6 +27,7 @@ app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode="rich",
     pretty_exceptions_show_locals=False,
+    context_settings={"help_option_names": ["--help", "-h", "/?"]},
 )
 console = Console()
 
@@ -64,6 +65,34 @@ def repository_root() -> Path:
     if (candidate / "pyproject.toml").is_file():
         return candidate
     raise RuntimeError("setup is available from a source checkout only")
+
+
+def normalize_uid_argument(uid: str) -> str:
+    cleaned = uid.strip().upper()
+    if not cleaned:
+        raise ValueError("UID is required")
+    if any(character not in "0123456789ABCDEF" for character in cleaned):
+        raise ValueError(
+            "UID must contain hexadecimal characters only; for supported 4-byte "
+            "cards this is usually 8 hex characters, for example DEADBEEF"
+        )
+    if len(cleaned) != 8:
+        raise ValueError(
+            f"UID must contain exactly 8 hexadecimal characters for supported 4-byte cards; got {cleaned!r}"
+        )
+    return cleaned
+
+
+def load_saved_state(paths: ToolPaths, uid: str) -> tuple[str, StateStore, RecoveryState]:
+    normalized_uid = normalize_uid_argument(uid)
+    store = StateStore(paths.card_dir(normalized_uid))
+    if not store.path.exists():
+        raise RuntimeError(
+            f"no saved recovery state exists for UID {normalized_uid}.\n"
+            f"Expected state file: {store.path}\n"
+            "Run `rc522-mfc recover ...` first, or confirm the full UID with `rc522-mfc inspect`."
+        )
+    return normalized_uid, store, store.load()
 
 
 def print_key_table(state: RecoveryState) -> None:
@@ -352,7 +381,7 @@ def status(
 ) -> None:
     """Show saved recovery progress for a card."""
     paths = ToolPaths.discover()
-    state = StateStore(paths.card_dir(uid.upper())).load()
+    _, _, state = load_saved_state(paths, uid)
     print_key_table(state)
 
 
@@ -362,8 +391,7 @@ def verify(
 ) -> None:
     """Authenticate every saved key against the card again."""
     paths = ensure_toolchain(require_pm3=False)
-    store = StateStore(paths.card_dir(uid.upper()))
-    state = store.load()
+    _, store, state = load_saved_state(paths, uid)
     native = NativeTool(paths.native, line_sink=line_sink)
     failed = 0
     for record in state.all_records():
@@ -398,8 +426,7 @@ def export_command(
 ) -> None:
     """Export recovered keys or a read-only 1 KiB card dump."""
     paths = ToolPaths.discover()
-    store = StateStore(paths.card_dir(uid.upper()))
-    state = store.load()
+    _, store, state = load_saved_state(paths, uid)
     normalized_format = export_format.lower()
     suffix = {"json": ".json", "csv": ".csv", "keys": ".keys", "dump": ".bin"}.get(normalized_format)
     if suffix is None:
