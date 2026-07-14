@@ -35,9 +35,7 @@ def test_help_lists_recovery_commands() -> None:
 
 def test_recover_help_mentions_skip_dictionary() -> None:
     result = runner.invoke(app, ["recover", "--help"])
-
     assert result.exit_code == 0, result.output
-
     output = Text.from_ansi(result.output).plain
     assert "--skip-dictionary" in output
 
