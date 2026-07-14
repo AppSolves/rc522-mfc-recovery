@@ -12,7 +12,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from typer.core import TyperGroup
-from typing_extensions import override
 
 from . import __version__
 from .branding import print_badge
@@ -27,7 +26,6 @@ from .workflow import RecoveryOptions, RecoveryWorkflow
 
 
 class RootGroup(TyperGroup):
-    @override
     def format_help(
         self,
         ctx: Any,
