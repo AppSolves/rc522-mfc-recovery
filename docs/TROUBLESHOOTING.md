@@ -39,6 +39,22 @@ The progress display shows collected records, total records, native attempts, an
 
 The pinned build uses `NOERROR=1` because recent GCC versions can emit warnings in unrelated Proxmark3 commands. The Hardnested sources are still compiled normally.
 
+## `In devel workdir but no executable found`
+
+This comes from the Proxmark3 `pm3` launcher when the source checkout exists but the compiled client executable is missing. Rebuild the offline solver:
+
+```bash
+rc522-mfc setup --force
+```
+
+From a source checkout, this is equivalent to:
+
+```bash
+./scripts/build-proxmark.sh --force
+```
+
+`rc522-mfc recover` and `rc522-mfc doctor` validate the compiled client before recovery starts.
+
 ## SSH disconnected
 
 Run long recovery jobs in `tmux` or `screen`. Verified state and complete datasets are reusable, but a partially written nonce file is recollected.

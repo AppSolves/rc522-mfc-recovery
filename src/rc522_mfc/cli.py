@@ -25,6 +25,7 @@ from .models import (
 from .native import NativeTool
 from .paths import ToolPaths
 from .progress import ProgressUpdate, WorkflowProgressDisplay
+from .solver import HardnestedSolver
 from .state import StateStore
 from .workflow import RecoveryOptions, RecoveryWorkflow
 
@@ -163,8 +164,11 @@ def ensure_toolchain(*, require_pm3: bool) -> ToolPaths:
     missing: list[str] = []
     if not paths.native.is_file():
         missing.append(f"native helper ({paths.native})")
-    if require_pm3 and not paths.pm3.is_file():
-        missing.append(f"offline PM3 solver ({paths.pm3})")
+    if require_pm3:
+        try:
+            HardnestedSolver(paths.pm3).ensure_ready()
+        except RuntimeError as error:
+            missing.append(f"offline PM3 solver ({error})")
     if not missing:
         return paths
 
@@ -182,12 +186,20 @@ def ensure_toolchain(*, require_pm3: bool) -> ToolPaths:
             if run_setup() != 0:
                 raise RuntimeError("setup failed")
             paths = ToolPaths.discover()
-            if paths.native.is_file() and (not require_pm3 or paths.pm3.is_file()):
+            if paths.native.is_file() and (not require_pm3 or _pm3_solver_ready(paths.pm3)):
                 return paths
 
     raise RuntimeError(
         f"required components are missing; run `rc522-mfc setup` from the source checkout:\n{details}"
     )
+
+
+def _pm3_solver_ready(pm3: Path) -> bool:
+    try:
+        HardnestedSolver(pm3).ensure_ready()
+    except RuntimeError:
+        return False
+    return True
 
 
 @app.command()
@@ -221,11 +233,19 @@ def doctor() -> None:
     table.add_column("Details")
 
     gpio_path = shutil.which("gpio")
+    try:
+        HardnestedSolver(paths.pm3).ensure_ready()
+        pm3_okay = True
+        pm3_details = str(paths.pm3)
+    except RuntimeError as error:
+        pm3_okay = False
+        pm3_details = str(error)
+
     checks: list[tuple[str, bool, str]] = [
         ("SPI device", Path("/dev/spidev0.0").exists(), "/dev/spidev0.0"),
         ("WiringPi", gpio_path is not None, gpio_path or "not found"),
         ("Native helper", paths.native.is_file(), str(paths.native)),
-        ("PM3 solver", paths.pm3.is_file(), str(paths.pm3)),
+        ("PM3 solver", pm3_okay, pm3_details),
     ]
 
     if paths.native.is_file():

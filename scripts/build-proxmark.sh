@@ -6,6 +6,7 @@ PREFIX="${RC522_MFC_PREFIX:-$HOME/.local/lib/rc522-mfc}"
 CACHE="${RC522_MFC_CACHE:-$HOME/.cache/rc522-mfc}"
 PM3_COMMIT="d0e8cf18614286c8f6be0864ef77b7ce5cae693d"
 PM3_DIR="$CACHE/proxmark3-$PM3_COMMIT"
+PM3_CLIENT="$PM3_DIR/client/proxmark3"
 FORCE=0
 
 while [[ $# -gt 0 ]]; do
@@ -43,8 +44,8 @@ else
   exit 1
 fi
 
-if [[ $FORCE -eq 0 && -x "$PM3_DIR/pm3" ]]; then
-  printf 'Using existing patched Proxmark3 client at %s\n' "$PM3_DIR/pm3"
+if [[ $FORCE -eq 0 && -x "$PM3_CLIENT" ]]; then
+  printf 'Using existing patched Proxmark3 client at %s\n' "$PM3_CLIENT"
 else
   make -C "$PM3_DIR" client/clean
   make -C "$PM3_DIR" -j"$(nproc)" client \
@@ -55,8 +56,8 @@ else
     NOERROR=1
 fi
 
-if [[ ! -x "$PM3_DIR/pm3" ]]; then
-  printf 'Proxmark3 client build did not produce %s/pm3.\n' "$PM3_DIR" >&2
+if [[ ! -x "$PM3_CLIENT" ]]; then
+  printf 'Proxmark3 client build did not produce %s.\n' "$PM3_CLIENT" >&2
   exit 1
 fi
 
