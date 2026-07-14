@@ -5,4 +5,4 @@
 |_| \_\\____|____/_____|_____|   |_|  |_|_|   \____|
 
                    - RC522-MFC -
-      verified MIFARE Classic recovery pipeline
+     verified MIFARE Classic recovery pipeline
