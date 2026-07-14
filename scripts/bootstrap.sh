@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BANNER="$ROOT/src/rc522_mfc/data/banner.txt"
 
 FORCE=0
 SKIP_APT=0
@@ -35,6 +36,14 @@ Environment variables:
 USAGE
 }
 
+print_badge() {
+  if [[ -f "$BANNER" ]]; then
+    printf '\n'
+    cat "$BANNER"
+    printf '\n\n'
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --force)
@@ -56,6 +65,8 @@ while [[ $# -gt 0 ]]; do
 
   shift
 done
+
+print_badge
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   printf '%s\n' \

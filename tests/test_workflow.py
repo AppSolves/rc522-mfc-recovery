@@ -251,7 +251,7 @@ def test_skip_dictionary_bypasses_dictionary_scan(tmp_path: Path) -> None:
 
 
 def test_weak_nested_success_syncs_overall_progress(tmp_path: Path) -> None:
-    events = []
+    events: list[ProgressUpdate] = []
     workflow = make_workflow(tmp_path)
     workflow.progress_sink = events.append
     native = RecoverNative()
@@ -272,6 +272,9 @@ def test_weak_nested_success_syncs_overall_progress(tmp_path: Path) -> None:
     overall = [event for event in events if event.kind == "overall"]
     assert overall[-1].completed == 1
     assert overall[-1].total == 1
+    key_events = [event.message for event in events if event.kind == "event"]
+    assert "Seed key verified: sector 01 Key A = FFFFFFFFFFFF" in key_events
+    assert "Weak Nested key verified: sector 00 Key A = A0A1A2A3A4A5" in key_events
 
 
 def test_recover_scans_dictionary_by_default(tmp_path: Path) -> None:

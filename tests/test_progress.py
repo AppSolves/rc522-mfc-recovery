@@ -49,3 +49,21 @@ def test_machine_progress_lines_do_not_replace_human_detail() -> None:
         display.handle_line('RC522_PROGRESS:{"operation":"hardnested","completed":1,"total":2}')
 
         assert _stage_task(display).fields["detail"] == "human detail"
+
+
+def test_event_update_prints_persistent_line() -> None:
+    output = StringIO()
+    console = Console(file=output, force_terminal=True, width=120)
+    with WorkflowProgressDisplay(
+        console,
+        overall_label="Recover selected keys",
+        overall_total=32,
+    ) as display:
+        display.handle_update(
+            ProgressUpdate(
+                "event",
+                "Hardnested key verified: sector 05 Key A = CD943BCBAA6D",
+            )
+        )
+
+    assert "Hardnested key verified: sector 05 Key A = CD943BCBAA6D" in output.getvalue()

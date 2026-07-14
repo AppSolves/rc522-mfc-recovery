@@ -45,6 +45,29 @@ class RecoveryWorkflow:
         if self.line_sink:
             self.line_sink(text)
 
+    def _announce(self, text: str) -> None:
+        if self.progress_sink:
+            self.progress_sink(ProgressUpdate(kind="event", message=text))
+        else:
+            self._say(text)
+
+    @staticmethod
+    def _key_event(record: KeyRecord) -> str:
+        source_labels = {
+            "provided": "Seed key verified",
+            "dictionary": "Dictionary key verified",
+            "sector-trailer": "Sector trailer key verified",
+            "reused-key": "Reused key verified",
+            "hardnested": "Hardnested key verified",
+            "weak-nested": "Weak Nested key verified",
+        }
+        label = source_labels.get(record.source, "Key verified")
+        return f"{label}: sector {record.sector:02d} Key {record.key_type.value} = {record.value}"
+
+    def _announce_key(self, record: KeyRecord) -> None:
+        if record.verified:
+            self._announce(self._key_event(record))
+
     def _update_progress(
         self,
         kind: str,
@@ -111,6 +134,7 @@ class RecoveryWorkflow:
         record.discovered_at = record.discovered_at or self._timestamp()
         state.put(record)
         store.save(state)
+        self._announce_key(record)
 
     def _verify_and_save(
         self,
@@ -187,15 +211,19 @@ class RecoveryWorkflow:
             ),
         )
         added = 0
+        new_hits: list[KeyRecord] = []
         for hit in hits:
             if state.get_verified(hit.sector, hit.key_type) is None:
                 if hit.source != "sector-trailer":
                     hit.source = source
                 hit.discovered_at = self._timestamp()
                 state.put(hit)
+                new_hits.append(hit)
                 added += 1
         if added:
             store.save(state)
+            for hit in new_hits:
+                self._announce_key(hit)
         return added
 
     @staticmethod
@@ -529,7 +557,6 @@ class RecoveryWorkflow:
                                 total=1,
                                 detail="direct RC522 authentication passed",
                             )
-                            self._say(f"Verified sector {sector} Key {key_type.value}: {candidate}")
                             self._propagate(state, store, options.sectors)
                             self._sync_selected_target_progress(
                                 state,
@@ -587,7 +614,6 @@ class RecoveryWorkflow:
                     total=1,
                     detail="direct RC522 authentication passed",
                 )
-                self._say(f"Verified sector {sector} Key {key_type.value}: {candidate}")
                 self._sync_selected_target_progress(
                     state,
                     options,

@@ -112,6 +112,9 @@ class WorkflowProgressDisplay:
         if update.kind == "stage":
             self._update_stage(update)
             return
+        if update.kind == "event":
+            self._print_event(update.message)
+            return
         self._set_detail(update.message)
 
     def handle_line(self, line: str) -> None:
@@ -193,3 +196,7 @@ class WorkflowProgressDisplay:
             return
         trimmed = detail if len(detail) <= 96 else f"{detail[:93]}..."
         self.progress.update(self._stage_task, detail=trimmed)
+
+    def _print_event(self, message: str) -> None:
+        self.progress.console.print(f"[bold green]+[/bold green] {message}", highlight=False)
+        self._set_detail(message)

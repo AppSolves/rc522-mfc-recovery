@@ -1,5 +1,6 @@
 from typer.testing import CliRunner
 
+from rc522_mfc.branding import banner_text
 from rc522_mfc.cli import app
 
 runner = CliRunner()
@@ -15,6 +16,12 @@ def test_version_command() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
     assert result.stdout.strip() == "0.1.0"
+
+
+def test_banner_resource_available() -> None:
+    banner = banner_text()
+    assert "RC522" in banner
+    assert "MIFARE Classic" in banner
 
 
 def test_help_lists_recovery_commands() -> None:

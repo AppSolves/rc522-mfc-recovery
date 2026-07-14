@@ -13,15 +13,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from . import __version__
+from .branding import print_badge
 from .exporters import export_csv, export_json, export_mct_keys
-from .models import (
-    KeyRecord,
-    KeyType,
-    NonceType,
-    RecoveryState,
-    parse_known_key,
-    parse_sector_expression,
-)
+from .models import KeyRecord, KeyType, NonceType, RecoveryState, parse_known_key, parse_sector_expression
 from .native import NativeTool
 from .paths import ToolPaths
 from .progress import ProgressUpdate, WorkflowProgressDisplay
@@ -226,6 +220,7 @@ def setup(
 @app.command()
 def doctor() -> None:
     """Check the OS, SPI device, dependencies, and MFRC522 communication."""
+    print_badge(console)
     paths = ToolPaths.discover()
     table = Table(title="RC522 MFC doctor")
     table.add_column("Check")
@@ -279,6 +274,7 @@ def inspect_card(
     ] = 128,
 ) -> None:
     """Identify the card and classify its nonce generator."""
+    print_badge(console)
     paths = ensure_toolchain(require_pm3=False)
     with WorkflowProgressDisplay(console, overall_label="Inspect card", overall_total=2) as progress:
         workflow = RecoveryWorkflow(paths, line_sink=progress.handle_line)
@@ -375,6 +371,7 @@ def recover(
     ] = False,
 ) -> None:
     """Recover missing keys, verify them, and reuse them across selected sectors."""
+    print_badge(console)
     selected_sectors = parse_sector_expression(sectors)
     selected_types = [KeyType(value) for value in dict.fromkeys(key_types.upper())]
     if not selected_types:
