@@ -1,0 +1,50 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+
+# Native builds
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+
+# Local dependencies and tools
+.deps/
+proxmark3/
+
+# Private card material
+work/
+cards/
+artifacts/
+*.bin
+*.mfd
+*.dump
+*.eml
+*.mct
+*.keys
+*.keymap
+*.meta
+*.log
+*.csv
+state.json
+nonces.txt
+keys_recovered.txt
+
+# Keep bundled public dictionaries
+!src/rc522_mfc/data/common.keys
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*~

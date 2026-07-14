@@ -1,0 +1,30 @@
+diff --git a/client/src/cmdhfmf.c b/client/src/cmdhfmf.c
+index c2c1954..3e082c1 100644
+--- a/client/src/cmdhfmf.c
++++ b/client/src/cmdhfmf.c
+@@ -2790,14 +2790,14 @@ static int CmdHF14AMfNestedHard(const char *Cmd) {
+     }
+ 
+     // santiy checks
+-    if ((g_session.pm3_present == false) && (tests == false)) {
++    if ((g_session.pm3_present == false) && (tests == false) && (nonce_file_read == false)) {
+         PrintAndLogEx(INFO, "No device connected");
+         return PM3_EFAILED;
+     }
+ 
+     bool known_target_key = (trg_keylen);
+ 
+-    if (nonce_file_read) {
++    if (nonce_file_read && fnlen == 0) {
+         char *fptr = GenerateFilename("hf-mf-", "-nonces.bin");
+         if (fptr == NULL)
+             strncpy(filename, "nonces.bin", FILE_PATH_SIZE - 1);
+@@ -2806,7 +2806,7 @@ static int CmdHF14AMfNestedHard(const char *Cmd) {
+         free(fptr);
+     }
+ 
+-    if (nonce_file_write) {
++    if (nonce_file_write && fnlen == 0) {
+         char *fptr = GenerateFilename("hf-mf-", "-nonces.bin");
+         if (fptr == NULL) {
+             return PM3_EFILE;

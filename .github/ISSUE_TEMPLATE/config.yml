@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/AppSolves/rc522-mfc-recovery/security/advisories/new
+    about: Report software vulnerabilities privately. Never include real card data in a public issue.

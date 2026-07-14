@@ -1,0 +1,95 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rc522-mfc-recovery"
+version = "0.1.0"
+description = "MIFARE Classic weak and hard nested key recovery with a Raspberry Pi and MFRC522"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "AppSolves" }]
+keywords = ["mifare", "mfrc522", "rc522", "rfid", "nfc", "hardnested", "raspberry-pi"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: C++",
+  "Topic :: Security",
+]
+dependencies = [
+  "platformdirs>=4.2,<5",
+  "rich>=13.9,<15",
+  "typer>=0.15,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.13,<2",
+  "pre-commit>=4,<5",
+  "PyYAML>=6.0,<7",
+  "build>=1.2,<2",
+  "pytest>=8.3,<10",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+rc522-mfc = "rc522_mfc.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/AppSolves/rc522-mfc-recovery"
+Repository = "https://github.com/AppSolves/rc522-mfc-recovery"
+Issues = "https://github.com/AppSolves/rc522-mfc-recovery/issues"
+
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/.editorconfig",
+  "/.gitattributes",
+  "/.github",
+  "/.gitignore",
+  "/.pre-commit-config.yaml",
+  "/CHANGELOG.md",
+  "/CITATION.cff",
+  "/CODE_OF_CONDUCT.md",
+  "/CONTRIBUTING.md",
+  "/LICENSE",
+  "/Makefile",
+  "/NOTICE.md",
+  "/README.md",
+  "/ROADMAP.md",
+  "/SECURITY.md",
+  "/THIRD_PARTY.md",
+  "/docs",
+  "/native",
+  "/patches",
+  "/pyproject.toml",
+  "/scripts",
+  "/src",
+  "/tests",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rc522_mfc"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/rc522_mfc/data/common.keys" = "rc522_mfc/data/common.keys"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["rc522_mfc"]

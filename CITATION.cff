@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software in research, cite this repository and the Hardnested paper."
+title: "RC522 MIFARE Classic Recovery"
+version: 0.1.0
+date-released: 2026-07-14
+license: GPL-3.0-only
+authors:
+  - name: AppSolves
+repository-code: "https://github.com/AppSolves/rc522-mfc-recovery"
+references:
+  - type: software
+    title: "MFRC522_nested_attack"
+    authors:
+      - name: Håkon Hystad
+    url: "https://github.com/HakonHystad/MFRC522_nested_attack"
+  - type: software
+    title: "RRG/Iceman Proxmark3"
+    url: "https://github.com/RfidResearchGroup/proxmark3"
