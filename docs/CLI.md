@@ -60,7 +60,7 @@ Important options:
 | `--key-types A`, `B`, or `AB` | Select target key types. |
 | `--dictionary FILE` | Add a one-key-per-line dictionary. Repeatable. |
 | `--samples N` | Hardnested RC522 trace count per target. Rounded up to even. |
-| `--nonce-type weak|hard|static` | Override classification for controlled testing. |
+| `--nonce-type weak`, `hard` or `static` | Override classification for controlled testing. |
 | `--no-fallback` | Prevent Hardnested fallback after weak Nested failure. |
 | `--delete-traces` | Delete nonce files after a verified result. |
 
